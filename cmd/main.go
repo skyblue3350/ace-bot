@@ -131,15 +131,15 @@ func run(cmd *cobra.Command, args []string) error {
 		index := rand.Intn(len(tweets))
 		tweet := tweets[index]
 
+		oauthConfig := oauth1.NewConfig(config.ConsumerKey, config.ConsumerSecret)
+		oauthToken := oauth1.NewToken(config.AccessToken, config.AccessSecret)
+
+		httpClient := oauthConfig.Client(oauth1.NoContext, oauthToken)
+		client := twitter.NewClient(httpClient)
+
 		if dryRun {
 			fmt.Print("dry-run mode: ")
 		} else {
-			oauthConfig := oauth1.NewConfig(config.ConsumerKey, config.ConsumerSecret)
-			oauthToken := oauth1.NewToken(config.AccessToken, config.AccessSecret)
-
-			httpClient := oauthConfig.Client(oauth1.NoContext, oauthToken)
-			client := twitter.NewClient(httpClient)
-
 			_, _, err := client.Statuses.Update(tweet, nil)
 			if err != nil {
 				return err
