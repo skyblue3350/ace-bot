@@ -1,13 +1,13 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
 	"time"
+	"unicode/utf8"
 
 	"github.com/dghubble/go-twitter/twitter"
 	"github.com/dghubble/oauth1"
@@ -22,8 +22,13 @@ type Config struct {
 	AccessSecret   string `yaml:"access_secret"`
 }
 
+type Tweet struct {
+	Text     string `yaml:"text"`
+	Callsign string `yaml:"callsign"`
+}
+
 const (
-	textFile       = "text-file"
+	tweetFile      = "tweet-file"
 	configFile     = "config-file"
 	checkFlag      = "check"
 	dryRunFlag     = "dry-run"
@@ -37,12 +42,12 @@ func main() {
 	}
 
 	flags := cmd.Flags()
-	flags.StringP(textFile, "t", "", "path of the text file to tweet")
-	flags.StringP(configFile, "c", "", "path of the text file to tweet")
+	flags.StringP(tweetFile, "t", "", "path of the yaml file to tweet")
+	flags.StringP(configFile, "c", "", "path of the config file")
 	flags.Bool(checkFlag, false, "verify if can tweet")
 	flags.Bool(dryRunFlag, false, "dry-run mode")
 
-	cmd.MarkFlagRequired(textFile)
+	cmd.MarkFlagRequired(tweetFile)
 
 	err := cmd.Execute()
 	if err != nil {
@@ -50,20 +55,24 @@ func main() {
 	}
 }
 
-func getTweets(textFilePath string) ([]string, error) {
-	f, err := os.Open(textFilePath)
+func getTweets(tweetFilePath string) ([]string, error) {
+	tweets := []Tweet{}
+
+	buffer, err := ioutil.ReadFile(tweetFilePath)
 	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	tweets := make([]string, 0, 1)
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		tweets = append(tweets, scanner.Text())
+		return []string{}, err
 	}
 
-	return tweets, nil
+	err = yaml.Unmarshal(buffer, &tweets)
+	if err != nil {
+		return []string{}, err
+	}
+
+	result := make([]string, len(tweets))
+	for i, v := range tweets {
+		result[i] = fmt.Sprintf("%s -%s-", v.Text, v.Callsign)
+	}
+	return result, nil
 }
 
 func getTwitterClientConfig(configFilePath string) (Config, error) {
@@ -84,12 +93,12 @@ func getTwitterClientConfig(configFilePath string) (Config, error) {
 
 func run(cmd *cobra.Command, args []string) error {
 	flags := cmd.Flags()
-	textFilePath, _ := flags.GetString(textFile)
+	tweetFilePath, _ := flags.GetString(tweetFile)
 	configFilePath, _ := flags.GetString(configFile)
 	check, _ := flags.GetBool(checkFlag)
 	dryRun, _ := flags.GetBool(dryRunFlag)
 
-	tweets, err := getTweets(textFilePath)
+	tweets, err := getTweets(tweetFilePath)
 	if err != nil {
 		return err
 	}
@@ -113,9 +122,9 @@ func run(cmd *cobra.Command, args []string) error {
 		// verify if can tweet
 		allPassFlag := true
 		for index, tweet := range tweets {
-			if tweetMaxLength < len(tweet) {
+			if tweetMaxLength < utf8.RuneCountInString(tweet) {
 				allPassFlag = false
-				fmt.Printf("Error: line: %d len: %d tweet: %s\n", index+1, len(tweet), tweet)
+				fmt.Printf("Error: index: %d len: %d tweet: %s\n", index, utf8.RuneCountInString(tweet), tweet)
 			}
 		}
 
